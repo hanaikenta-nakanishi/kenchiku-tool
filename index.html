@@ -258,10 +258,41 @@ window._fbDb = db;
 window._fbProvider = provider;
 window._fbSignIn = ()=> signInWithPopup(auth, provider);
 window._fbSignOut = ()=> signOut(auth);
-window._fbOnAuthStateChanged = (cb)=> onAuthStateChanged(auth, cb);
 window._fbGetDoc = getDoc;
 window._fbSetDoc = setDoc;
 window._fbDoc = doc;
+
+// 認証状態監視（モジュール内で確実に実行）
+onAuthStateChanged(auth, async (user)=>{
+  const ls = document.getElementById('loginScreen');
+  if(!user){
+    if(ls) ls.style.display='flex';
+    return;
+  }
+  if(ls) ls.style.display='none';
+
+  window._currentUser = user;
+  try{
+    const snap = await getDoc(doc(db,'internal_users',user.email));
+    window._isInternal = snap.exists();
+  }catch(e){ window._isInternal = false; }
+
+  const unEl = document.getElementById('userNameDisp');
+  if(unEl) unEl.textContent = user.displayName || user.email;
+
+  // アプリ初期化（グローバル関数が揃うまで待機）
+  const waitAndInit = async ()=>{
+    if(typeof load==='undefined'||typeof openDB==='undefined'){
+      setTimeout(waitAndInit, 50); return;
+    }
+    load();
+    await openDB();
+    await loadImgs();
+    showV('home',false);
+    renderHome();
+  };
+  waitAndInit();
+});
 </script>
 </head>
 <body>
@@ -2960,37 +2991,7 @@ async function execPasteImport(){
 // ═══════════════════════════════════════════════════════════
 //  初期化
 // ═══════════════════════════════════════════════════════════
-// Firebase認証後に初期化
-window._fbOnAuthStateChanged(async (user)=>{
-  const ls = document.getElementById('loginScreen');
-  if(!user){
-    // 未ログイン：ログイン画面を表示、アプリを隠す
-    if(ls) ls.style.display='flex';
-    document.getElementById('app') && (document.getElementById('app').style.display='none');
-    return;
-  }
-  // ログイン済み：アプリを表示
-  if(ls) ls.style.display='none';
-  const appEl = document.getElementById('app');
-  if(appEl) appEl.style.display='';
-
-  // 内部ユーザー判定
-  window._currentUser = user;
-  try{
-    const snap = await window._fbGetDoc(window._fbDoc(window._fbDb,'internal_users',user.email));
-    window._isInternal = snap.exists();
-  }catch(e){ window._isInternal = false; }
-
-  // ユーザー名をヘッダーに表示
-  const unEl = document.getElementById('userNameDisp');
-  if(unEl) unEl.textContent = user.displayName || user.email;
-
-  load();
-  await openDB();
-  await loadImgs();
-  showV('home',false);
-  renderHome();
-});
+// Firebase認証はモジュールスクリプト内で処理
 </script>
 <!-- MODAL: 貼り付けインポート -->
 <div class="ov" id="mPasteImport">
