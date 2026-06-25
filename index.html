@@ -133,7 +133,7 @@ textarea.inp{resize:vertical;min-height:80px;}
 .pt-txt{font-size:6pt;line-height:1.35;text-align:center;color:#222;margin-top:1mm;}
 .pt-note{padding:2mm;font-size:6.5pt;line-height:1.6;vertical-align:top;white-space:pre-wrap;}
 .pt-diag{background:linear-gradient(to bottom right,transparent calc(50% - .4px),#bbb calc(50% - .4px),#bbb calc(50% + .4px),transparent calc(50% + .4px));}
-.pp-ft{text-align:right;font-size:6pt;color:#888;margin-top:2mm;}
+.pp-ft{display:flex;justify-content:space-between;font-size:6pt;color:#888;margin-top:2mm;}
 
 /* ===== MODALS ===== */
 .ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;align-items:flex-start;justify-content:center;padding:28px 14px;overflow-y:auto;}
@@ -233,13 +233,61 @@ textarea.inp{resize:vertical;min-height:80px;}
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
+  from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
+import { getFirestore, doc, getDoc, setDoc }
+  from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBShTX_LR3pUlIsm-38pm5CWN4NgFgcIyM",
+  authDomain: "kenchiku-tool.firebaseapp.com",
+  projectId: "kenchiku-tool",
+  storageBucket: "kenchiku-tool.firebasestorage.app",
+  messagingSenderId: "615292197082",
+  appId: "1:615292197082:web:991e420d25be5048cf6de3"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+window._fbAuth = auth;
+window._fbDb = db;
+window._fbProvider = provider;
+window._fbSignIn = ()=> signInWithPopup(auth, provider);
+window._fbSignOut = ()=> signOut(auth);
+window._fbOnAuthStateChanged = (cb)=> onAuthStateChanged(auth, cb);
+window._fbGetDoc = getDoc;
+window._fbSetDoc = setDoc;
+window._fbDoc = doc;
+</script>
 </head>
 <body>
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:#f0f4f8;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px">
+  <div style="text-align:center">
+    <div style="font-size:32px;margin-bottom:8px">🏗️</div>
+    <div style="font-size:20px;font-weight:700;color:#1a3a5c;margin-bottom:4px">建築計画資料作成ツール</div>
+    <div style="font-size:13px;color:#666;margin-bottom:24px">Googleアカウントでログインしてください</div>
+    <button id="loginBtn" onclick="window._fbSignIn().catch(e=>alert('ログインに失敗しました: '+e.message))"
+      style="display:inline-flex;align-items:center;gap:10px;background:#fff;border:1.5px solid #ddd;border-radius:8px;padding:12px 24px;font-size:15px;font-weight:600;color:#333;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.1)">
+      <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="width:20px;height:20px">
+      Googleでログイン
+    </button>
+  </div>
+</div>
 
+
+<div id="app">
 <div class="hdr" id="hdr">
   <button class="hdr-back" id="hdrBack" style="display:none" onclick="goBack()">← 戻る</button>
   <span class="hdr-title" id="hdrTitle">🏗️ 建築計画資料作成ツール</span>
   <div class="hdr-acts" id="hdrActs"></div>
+  <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-shrink:0">
+    <span id="userNameDisp" style="font-size:11px;color:var(--muted);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></span>
+    <button class="btn bo bsm" onclick="window._fbSignOut&&window._fbSignOut()" style="font-size:10px;padding:3px 8px">ログアウト</button>
+  </div>
 </div>
 
 <div class="main">
@@ -279,14 +327,21 @@ textarea.inp{resize:vertical;min-height:80px;}
       <div style="display:flex;gap:7px">
         <button class="btn bp bsm" onclick="doShowPrint()">🖨️ PDF出力</button>
       </div></div>
-    <div style="padding:2px 0 6px 2px">
+    <div style="padding:2px 0 6px 2px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <button class="btn bo bsm" onclick="relinkMaterials()" title="素材を再インポートした後に使用">🔄 素材を再リンク</button>
+      <div style="display:flex;align-items:center;gap:4px;margin-left:auto">
+        <label style="font-size:11px;color:var(--muted);white-space:nowrap">社名</label>
+        <input class="inp" id="printCompanyInp" style="width:120px;font-size:11px;padding:4px 7px" placeholder="会社名（印刷フッター）"
+          oninput="updPjMeta('companyName',this.value)">
+        <label style="font-size:11px;color:var(--muted);white-space:nowrap;margin-left:4px">印刷日</label>
+        <input class="inp" id="printDateInp" style="width:110px;font-size:11px;padding:4px 7px" placeholder="例）2026.06.25"
+          oninput="updPjMeta('printDate',this.value)">
+      </div>
     </div>
     <div class="sheet-list" id="sheetList"></div>
     <div class="add-btns">
       <button class="btn" style="background:#4a7c59;color:#fff" onclick="addHearingSheet()">＋ ヒアリングシートを追加</button>
-      <button class="btn bsm" style="background:#3a7ca5;color:#fff" onclick="document.getElementById('hearingImportInput').click()">📥 ヒアリングを読み込み</button>
-      <input type="file" id="hearingImportInput" accept=".json,application/json,text/plain" style="display:none" onchange="onHearingImportFile(this)">
+
       <button class="btn ba" onclick="addIntSheet()">＋ 内観プランシートを追加</button>
       <button class="btn" style="background:#7b5ea7;color:#fff" onclick="addExtSheet()">＋ 外観プランシートを追加</button>
     </div>
@@ -299,7 +354,6 @@ textarea.inp{resize:vertical;min-height:80px;}
     <div class="ch"><span id="sheetTitle">内観プランシート</span></div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
       <button class="btn bo bsm" id="sheetPdfCropBtn" onclick="openPdfCrop()" style="display:none">📄 PDFから取り込み</button>
-      <button class="btn bo bsm" id="sheetExportBtn" onclick="exportHearing(curSh)" style="display:none">📤 書き出し</button>
       <button class="btn bp bsm" onclick="downloadCurSheetPDF()">🖨️ 印刷/PDF保存</button>
       <button class="btn bd bsm" onclick="delSheet()">🗑️ このシートを削除</button>
     </div>
@@ -431,9 +485,7 @@ textarea.inp{resize:vertical;min-height:80px;}
     </label>
     <div class="fg" style="margin-bottom:9px"><label class="fl">カテゴリ</label>
       <select class="inp" id="mm_cat">
-        <option>天井クロス</option><option>壁クロス</option><option>床材</option><option>巾木</option>
-        <option>窓枠（三方クロス）</option><option>サッシ内観</option><option>建具色</option>
-        <option>収納・その他</option>
+        <option>クロス</option><option>板材</option><option>CF</option><option>その他</option>
       </select></div>
     <div class="fg" style="margin-bottom:9px"><label class="fl">メーカー名</label>
       <input class="inp" id="mm_maker" placeholder="例）サンゲツ"></div>
@@ -470,9 +522,7 @@ textarea.inp{resize:vertical;min-height:80px;}
     <h2>カテゴリを一括設定</h2>
     <div class="fg" style="margin-bottom:16px"><label class="fl">カテゴリ</label>
       <select class="inp" id="blkCatSel">
-        <option>天井クロス</option><option>壁クロス</option><option>床材</option><option>巾木</option>
-        <option>窓枠（三方クロス）</option><option>サッシ内観</option><option>建具色</option>
-        <option>収納・その他</option>
+        <option>クロス</option><option>板材</option><option>CF</option><option>その他</option>
       </select></div>
     <div style="display:flex;justify-content:flex-end;gap:8px">
       <button class="btn bo" onclick="closeM('mBulkCat')">キャンセル</button>
@@ -491,9 +541,7 @@ textarea.inp{resize:vertical;min-height:80px;}
     <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;align-items:flex-end">
       <div class="fg" style="flex:1;min-width:150px"><label class="fl">既定カテゴリ</label>
         <select class="inp" id="bCat" onchange="updateBatchCat()">
-          <option>天井クロス</option><option>壁クロス</option><option>床材</option><option>巾木</option>
-          <option>窓枠（三方クロス）</option><option>サッシ内観</option><option>建具色</option>
-          <option>収納・その他</option>
+          <option>クロス</option><option>板材</option><option>CF</option><option>その他</option>
         </select></div>
       <div class="fg" style="flex:1;min-width:150px"><label class="fl">メーカー名（一括）</label>
         <div style="display:flex;gap:5px">
@@ -593,9 +641,11 @@ let viewStack=[];
 let catF='', makerF='', yearF='';   // ライブラリのフィルタ
 let tmpMid=null;          // 素材ピッカーの仮選択ID
 let cKey=null, cCat=null; // セル編集対象のキー・カテゴリ
+let mpPage=0, mpList=[];   // ピッカーページング
 let exportMode='';        // エクスポート対象（'lib-sel' 等）
 
-const CATS=['天井クロス','壁クロス','床材','巾木','窓枠（三方クロス）','サッシ内観','建具色','収納・その他'];
+const CATS=['天井','壁','床材','巾木','窓枠','サッシ内観','建具色','収納・その他'];
+const MCATS=['クロス','板材','CF','その他'];
 const NOTE_CATS=new Set(['収納・その他']);
 const EXT_ROWS=['玄関ドア','ハンドル','屋根','外壁','軒天','雨樋','基礎','窓','バルコニー'];
 const EXT_SZ_PX={s:65,m:100,l:145};
@@ -835,7 +885,15 @@ function renderProj(){
   const p=getPj(curPj); if(!p) return;
   document.getElementById('pi_name').value=p.name||'';
   document.getElementById('pi_type').value=p.type||'';
+  const ci=document.getElementById('printCompanyInp');
+  const di=document.getElementById('printDateInp');
+  if(ci) ci.value=p.companyName||'';
+  if(di) di.value=p.printDate||'';
   renderSheetList();
+}
+function updPjMeta(field,val){
+  const p=getPj(curPj); if(!p) return;
+  p[field]=val; save();
 }
 function savePj(){
   const p=getPj(curPj); if(!p) return;
@@ -890,7 +948,7 @@ function addIntSheet(){
   const p=getPj(curPj); if(!p) return;
   if(!p.sheets) p.sheets=[];
   const n=p.sheets.filter(s=>s.type==='int').length;
-  const s={id:uid(),type:'int',label:`内観${PN[n]||(n+1)}`,floor:PN[n]||'1階',rooms:['','','','']};
+  const s={id:uid(),type:'int',label:PN[n]||'1階',floor:PN[n]||'1階',rooms:['','','','']};
   p.sheets.push(s); save(); renderSheetList(); openSheet(s.id);
 }
 function addExtSheet(){
@@ -1029,8 +1087,6 @@ function renderInt(sid){
   document.getElementById('sheetTitle').textContent=sh.label||'内観プランシート';
   const pdfBtn=document.getElementById('sheetPdfCropBtn');
   if(pdfBtn) pdfBtn.style.display='none';
-  const expBtn=document.getElementById('sheetExportBtn');
-  if(expBtn) expBtn.style.display='none';
   if(!sh.rooms) sh.rooms=['','','',''];
   document.getElementById('floorRow').innerHTML=`
     <div class="fg" style="min-width:120px"><label class="fl">階・エリア</label>
@@ -1044,6 +1100,7 @@ function renderInt(sid){
 function updIntField(sid,field,val){
   const sh=getSh(sid); if(!sh) return;
   sh[field]=val; if(field==='label'){ const t=document.getElementById('sheetTitle'); if(t) t.textContent=val; }
+  if(field==='floor'){ sh.label=val; const t=document.getElementById('sheetTitle'); if(t) t.textContent=val; renderSheetList(); }
   save(); if(field==='floor') renderGrid(sid);
 }
 function updIntRoom(sid,i,val){
@@ -1158,8 +1215,6 @@ function renderHearing(sid){
   document.getElementById('sheetTitle').textContent=sh.label||'ヒアリングシート';
   const pdfBtn=document.getElementById('sheetPdfCropBtn');
   if(pdfBtn) pdfBtn.style.display='none';
-  const expBtn=document.getElementById('sheetExportBtn');
-  if(expBtn) expBtn.style.display='';
   // 入力フィールドのヘルパー
   const fld=(label,field,type='text',wide=false)=>{
     const val=sh[field];
@@ -1266,7 +1321,7 @@ function renderHearing(sid){
           <div style="display:flex;gap:6px">
             <input class="inp" id="toshiUrlInp_${e(sid)}" value="${e(sh.toshiUrl||'')}" placeholder="自治体の都市計画情報ページURL"
               oninput="updHearing('${sid}','toshiUrl',this.value)">
-            ${sh.toshiUrl?`<a class="btn bo bsm" href="${e(sh.toshiUrl)}" target="_blank" rel="noopener" style="white-space:nowrap">🔗 開く</a>`:''}
+            <button class="btn bo bsm" style="white-space:nowrap" onclick="openToshiUrl('${sid}')">🔗 開く</button>
           </div>
         </div>
         <div class="fg" style="margin-bottom:6px">
@@ -1410,6 +1465,12 @@ function addToshiFavManual(){
   if(toshiFavs.some(f=>f.url===u)){ toast('既に登録済みです'); return; }
   toshiFavs.push({label:(label||u).trim(),url:u});
   saveToshiFavs(); renderHearing(curSh); toast('★ お気に入りに追加しました','ok');
+}
+function openToshiUrl(sid){
+  const sh=getSh(sid);
+  const url=(sh&&sh.toshiUrl||'').trim();
+  if(!url){ toast('URLが入力されていません'); return; }
+  window.open(url,'_blank','noopener');
 }
 function addToshiFav(){
   const sh=getSh(curSh);
@@ -1803,8 +1864,6 @@ function renderExt(sid){
   document.getElementById('sheetTitle').textContent='外観プランシート';
   const pdfBtn=document.getElementById('sheetPdfCropBtn');
   if(pdfBtn) pdfBtn.style.display='';
-  const expBtn=document.getElementById('sheetExportBtn');
-  if(expBtn) expBtn.style.display='none';
   const sh=getSh(sid);
   if(sh&&sh.extImgs) sh.extImgs=sh.extImgs.map(x=>typeof x==='string'?{id:x,size:'m'}:x);
   const imgs=sh&&sh.extImgs||[];
@@ -1905,7 +1964,7 @@ function openLibForExtImg(sid){
     body.innerHTML=`
       <div style="margin-bottom:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <select class="inp" style="width:auto" onchange="(function(v){document.dispatchEvent(new CustomEvent('libExtCat',{detail:v}))})(this.value)">
-          ${CATS.map(c=>`<option${c===curCat?' selected':''}>${e(c)}</option>`).join('')}
+          ${MCATS.map(c=>`<option${c===curCat?' selected':''}>${e(c)}</option>`).join('')}
         </select>
         <span style="font-size:11px;color:var(--muted)">${cm.length}件</span>
       </div>
@@ -1988,7 +2047,7 @@ function openCell(k,cat){
       save(); renderGrid(curSh); closeM('mCell'); toast('✅ 保存しました','ok');
     };
   } else {
-    const cm=mats.filter(m=>m.cat===cat);
+    const cm=mats;
     body.innerHTML=`
       <div class="fg" style="margin-bottom:8px">
         <label class="fl">品番・仕様を入力</label>
@@ -2001,16 +2060,21 @@ function openCell(k,cat){
         <input class="inp" id="cellNote2" placeholder="" value="${e(en.note||'')}">
       </div>
       <label class="fl" style="display:block;margin-bottom:5px">ライブラリから選択（任意）</label>
-      <div style="display:flex;gap:6px;margin-bottom:7px">
-        <input class="inp" id="mpSrch" placeholder="品番で検索..." style="flex:1" oninput="filterMp()">
+      <div style="display:flex;gap:6px;margin-bottom:7px;flex-wrap:wrap">
+        <select class="inp" id="mpCat" style="width:auto;min-width:80px" onchange="filterMp()">
+          <option value="">全カテゴリ</option>
+          ${MCATS.map(c=>`<option>${e(c)}</option>`).join('')}
+        </select>
         <select class="inp" id="mpMaker" style="width:auto;min-width:90px" onchange="filterMp()">
           <option value="">全メーカー</option>
-          ${[...new Set(mats.filter(m=>m.cat===cat).map(m=>m.maker).filter(Boolean))].sort().map(mk=>`<option>${e(mk)}</option>`).join('')}
+          ${[...new Set(mats.map(m=>m.maker).filter(Boolean))].sort().map(mk=>`<option>${e(mk)}</option>`).join('')}
         </select>
+        <input class="inp" id="mpSrch" placeholder="品番で検索..." style="flex:1;min-width:100px" oninput="filterMp()">
       </div>
       <button class="mp-none-btn ${!tmpMid?'sel':''}" id="mpNoneBtn" onclick="pickM(null)">✕ 選択解除</button>
-      <div class="mpg" id="mpGrid">${mpItems(cm)}</div>
-      ${!cm.length?`<p style="font-size:11px;color:var(--muted);text-align:center;margin-top:8px">「素材ライブラリ」に「${cat}」の素材が未登録です</p>`:''}`;
+      <div class="mpg" id="mpGrid"></div>
+      <div id="mpPager" style="display:flex;align-items:center;justify-content:center;gap:8px;margin-top:6px"></div>`;
+    mpList=cm; mpPage=0; renderMp();
     document.getElementById('cellOk').onclick=()=>{
       if(!ents[cKey]) ents[cKey]={};
       ents[cKey].matId=tmpMid||null;
@@ -2028,13 +2092,37 @@ function mpItems(list){
       <div class="mpi"><b>【${e(m.maker)}】${e(m.code)}</b>${m.note?`<div style="color:var(--muted)">${e(m.note)}</div>`:''}</div>
     </div>`).join('');
 }
+function renderMp(){
+  const PS=12;
+  const total=mpList.length;
+  const pages=Math.max(1,Math.ceil(total/PS));
+  if(mpPage>=pages) mpPage=pages-1;
+  const slice=mpList.slice(mpPage*PS,(mpPage+1)*PS);
+  const grid=document.getElementById('mpGrid');
+  const pager=document.getElementById('mpPager');
+  if(!grid) return;
+  grid.innerHTML=mpItems(slice);
+  if(!total){
+    grid.innerHTML='<p style="font-size:11px;color:var(--muted);text-align:center;padding:8px 0">該当する素材がありません</p>';
+  }
+  if(pager){
+    pager.innerHTML=pages<=1?'':`
+      <button class="btn bo bsm" onclick="mpGo(${mpPage-1})" ${mpPage===0?'disabled':''}>◀</button>
+      <span style="font-size:11.5px">${mpPage+1} / ${pages}　<span style="color:var(--muted)">(${total}件)</span></span>
+      <button class="btn bo bsm" onclick="mpGo(${mpPage+1})" ${mpPage>=pages-1?'disabled':''}>▶</button>`;
+  }
+}
+function mpGo(p){ mpPage=p; renderMp(); }
 function filterMp(){
   const q=(document.getElementById('mpSrch').value||'').toLowerCase();
   const mk=document.getElementById('mpMaker').value;
-  const res=mats.filter(m=>m.cat===cCat
+  const catEl=document.getElementById('mpCat');
+  const mc=catEl?catEl.value:'';
+  mpList=mats.filter(m=>
+    (!mc||m.cat===mc)
     &&(!mk||m.maker===mk)
     &&(!q||m.maker.toLowerCase().includes(q)||m.code.toLowerCase().includes(q)||(m.note||'').toLowerCase().includes(q)));
-  document.getElementById('mpGrid').innerHTML=mpItems(res);
+  mpPage=0; renderMp();
 }
 function pickM(id){
   tmpMid=id;
@@ -2207,7 +2295,7 @@ function applyFilters(){
 function openAddMat(){
   document.getElementById('mMatTitle').textContent='素材を登録';
   ['mm_cat','mm_maker','mm_code','mm_note','mm_id'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('mm_cat').value='壁クロス';
+  document.getElementById('mm_cat').value='クロス';
   document.getElementById('mm_year').value=new Date().getFullYear();
   document.getElementById('matImgInp').value='';
   const ip=document.getElementById('matImgPrev');
@@ -2401,7 +2489,7 @@ function renderBatchPrev(){
       </td>
       <td style="padding:4px 6px">
         <select style="font-size:11px;padding:2px 4px;border:1px solid #ddd;border-radius:4px;width:100%" onchange="batchItems[${i}].cat=this.value">
-          ${CATS.map(c=>`<option ${(item.cat||defCat)===c?'selected':''}>${c}</option>`).join('')}
+          ${MCATS.map(c=>`<option ${(item.cat||defCat)===c?'selected':''}>${c}</option>`).join('')}
         </select>
       </td>
       <td style="padding:4px 6px">
@@ -2588,6 +2676,14 @@ function buildHearingPages(pj,sh){
   (sh.meetings||[]).forEach((m,i)=>{ html+=buildMeetingPage(pj,sh,m,i); });
   return html;
 }
+function ppFoot(left,pj){
+  const co=e(pj.companyName||'');
+  return `<div class="pp-ft"><span>${left}</span>${co?`<span>${co}</span>`:'<span></span>'}</div>`;
+}
+function ppHead(title,pj){
+  const dt=e(pj.printDate||'');
+  return `<div class="pp-h" style="position:relative">${title}${dt?`<span style="position:absolute;right:0;font-size:7.5pt;font-weight:400;color:#555;letter-spacing:0">${dt}</span>`:''}</div>`;
+}
 function buildHearingInfoPage(pj,sh){
   const foot=`${e(pj.name||'　')}　ヒアリングシート`;
   const members=sh.members||[];
@@ -2603,7 +2699,7 @@ function buildHearingInfoPage(pj,sh){
     <td style="${TD}">${e(m.email||'')}</td><td style="${TD};width:22mm">${e(m.note||'')}</td></tr>`).join('')
     :`<tr><td colspan="6" style="${TD};text-align:center;color:#aaa">（未入力）</td></tr>`;
   return `<div class="pp">
-  <div class="pp-h">顧客ヒアリングシート</div>
+  ${ppHead('顧客ヒアリングシート',pj)}
   <div class="pt-wrap" style="display:flex;flex-direction:column;gap:3mm">
     <div>
       <div style="font-size:8pt;font-weight:700;color:#1a3a5c;border-bottom:1.5px solid #1a3a5c;padding-bottom:1mm;margin-bottom:2mm">■ お客様基本情報</div>
@@ -2636,7 +2732,7 @@ function buildHearingInfoPage(pj,sh){
       </table>
     </div>
   </div>
-  <div class="pp-ft">${foot}</div>
+  ${ppFoot(foot,pj)}
 </div>`;
 }
 function buildToshiPage(pj,sh){
@@ -2646,7 +2742,7 @@ function buildToshiPage(pj,sh){
   <div style="flex:1;overflow:hidden;display:flex;align-items:flex-start">
     <img src="${imgCache[sh.toshiImgId]}" style="width:100%;height:100%;object-fit:contain;display:block">
   </div>
-  <div class="pp-ft" style="padding:0 4mm">${foot}</div>
+  <div class="pp-ft" style="padding:0 4mm"><span>${foot}</span><span>${e(pj.companyName||"")}</span></div>
 </div>`;
 }
 function printMeetingRecord(sid,idx){
@@ -2682,7 +2778,7 @@ function buildMeetingPage(pj,sh,m,idx){
   <div class="pt-wrap" style="flex:1;overflow:hidden">
     <div style="font-size:8.5pt;line-height:2;white-space:pre-wrap;height:100%;overflow:hidden">${e(m.content||'')}</div>
   </div>
-  <div class="pp-ft">${foot}</div>
+  ${ppFoot(foot,pj)}
 </div>`;
 }
 function calcNoteH(sh, baseSz){
@@ -2713,7 +2809,7 @@ function buildIntPage(pj,sh,idx,sz){
   const noteH=calcNoteH(sh,sz);
   const normalH=noteH>baseNoteH ? Math.max(20,Math.floor((totalH-noteH)/7)) : baseNormalH;
   const ih=Math.max(normalH-8, 8);
-  let h=`<div class="pp"><div class="pp-h">${title}</div><div class="pt-wrap"><table class="pt">`;
+  let h=`<div class="pp">${ppHead(title,pj)}<div class="pt-wrap"><table class="pt">`;
   h+=`<tr><td class="pt-fl">${e(floor)}</td>`;
   for(let i=0;i<4;i++) h+=`<td class="pt-rh" style="width:${cw}mm">${e(rooms[i]||'')}</td>`;
   h+=`</tr>`;
@@ -2744,7 +2840,7 @@ function buildIntPage(pj,sh,idx,sz){
     }
     h+=`</tr>`;
   });
-  h+=`</table></div><div class="pp-ft">${foot}</div></div>`;
+  h+=`</table></div>${ppFoot(foot,pj)}</div>`;
   return h;
 }
 function buildExtPage(pj,sh,idx){
@@ -2764,7 +2860,7 @@ function buildExtPage(pj,sh,idx){
     </tr>`;
   });
   let h=`<div class="pp">
-  <div class="pp-h">${title}</div>
+  ${ppHead(title,pj)}
   <div class="pt-wrap" style="display:flex;flex-direction:column;gap:2mm">
 
     <!-- ① パーススペース -->
@@ -2812,7 +2908,7 @@ function buildExtPage(pj,sh,idx){
       </table>
     </div>
   </div>
-  <div class="pp-ft">${foot}</div>
+  ${ppFoot(foot,pj)}
 </div>`;
   return h;
 }
@@ -2864,13 +2960,37 @@ async function execPasteImport(){
 // ═══════════════════════════════════════════════════════════
 //  初期化
 // ═══════════════════════════════════════════════════════════
-(async()=>{
+// Firebase認証後に初期化
+window._fbOnAuthStateChanged(async (user)=>{
+  const ls = document.getElementById('loginScreen');
+  if(!user){
+    // 未ログイン：ログイン画面を表示、アプリを隠す
+    if(ls) ls.style.display='flex';
+    document.getElementById('app') && (document.getElementById('app').style.display='none');
+    return;
+  }
+  // ログイン済み：アプリを表示
+  if(ls) ls.style.display='none';
+  const appEl = document.getElementById('app');
+  if(appEl) appEl.style.display='';
+
+  // 内部ユーザー判定
+  window._currentUser = user;
+  try{
+    const snap = await window._fbGetDoc(window._fbDoc(window._fbDb,'internal_users',user.email));
+    window._isInternal = snap.exists();
+  }catch(e){ window._isInternal = false; }
+
+  // ユーザー名をヘッダーに表示
+  const unEl = document.getElementById('userNameDisp');
+  if(unEl) unEl.textContent = user.displayName || user.email;
+
   load();
   await openDB();
   await loadImgs();
   showV('home',false);
   renderHome();
-})();
+});
 </script>
 <!-- MODAL: 貼り付けインポート -->
 <div class="ov" id="mPasteImport">
@@ -2885,5 +3005,6 @@ async function execPasteImport(){
     </div>
   </div>
 </div>
+</div><!-- #app -->
 </body>
 </html>
