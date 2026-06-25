@@ -237,7 +237,7 @@ textarea.inp{resize:vertical;min-height:80px;}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
-import { getFirestore, doc, getDoc, setDoc }
+import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 
 const firebaseConfig = {
@@ -261,6 +261,9 @@ window._fbSignOut = ()=> signOut(auth);
 window._fbGetDoc = getDoc;
 window._fbSetDoc = setDoc;
 window._fbDoc = doc;
+window._fbCollection = collection;
+window._fbGetDocs = getDocs;
+window._fbDeleteDoc = deleteDoc;
 
 // 認証状態監視（モジュール内で確実に実行）
 onAuthStateChanged(auth, async (user)=>{
@@ -285,7 +288,7 @@ onAuthStateChanged(auth, async (user)=>{
     if(typeof load==='undefined'||typeof openDB==='undefined'){
       setTimeout(waitAndInit, 50); return;
     }
-    load();
+    await load();
     await openDB();
     await loadImgs();
     showV('home',false);
@@ -796,10 +799,45 @@ function delImg(id){
     }catch(_){ resolve(); }
   });
 }
-function load(){
-  try{ mats=JSON.parse(localStorage.getItem('cs3_mats')||'[]'); }catch(_){ mats=[]; }
-  try{ projs=JSON.parse(localStorage.getItem('cs3_projs')||'[]'); }catch(_){ projs=[]; }
-  try{ ents=JSON.parse(localStorage.getItem('cs3_ents')||'{}'); }catch(_){ ents={}; }
+async function load(){
+  if(window._isInternal && window._fbGetDoc){
+    try{
+      const [libSnap, entSnap, projSnaps] = await Promise.all([
+        window._fbGetDoc(window._fbDoc(window._fbDb,'shared_data','library')),
+        window._fbGetDoc(window._fbDoc(window._fbDb,'shared_data','entities')),
+        window._fbGetDocs(window._fbCollection(window._fbDb,'shared_projects'))
+      ]);
+      if(!libSnap.exists() && projSnaps.empty){
+        // Firestoreが空 → localStorageからマイグレーション
+        try{ mats=JSON.parse(localStorage.getItem('cs3_mats')||'[]'); }catch(_){ mats=[]; }
+        try{ projs=JSON.parse(localStorage.getItem('cs3_projs')||'[]'); }catch(_){ projs=[]; }
+        try{ ents=JSON.parse(localStorage.getItem('cs3_ents')||'{}'); }catch(_){ ents={}; }
+        if(!Array.isArray(mats)) mats=[];
+        if(!Array.isArray(projs)) projs=[];
+        if(!ents||typeof ents!=='object') ents={};
+        await window._fbSetDoc(window._fbDoc(window._fbDb,'shared_data','library'),{mats});
+        await window._fbSetDoc(window._fbDoc(window._fbDb,'shared_data','entities'),{ents});
+        for(const p of projs){
+          await window._fbSetDoc(window._fbDoc(window._fbDb,'shared_projects',p.id),p);
+        }
+        if(mats.length||projs.length) toast('📤 データをクラウドに移行しました');
+      } else {
+        mats = libSnap.exists() ? (libSnap.data().mats||[]) : [];
+        ents = entSnap.exists() ? (entSnap.data().ents||{}) : {};
+        projs = projSnaps.docs.map(d=>d.data());
+      }
+    } catch(e){
+      console.error('Firestore load error:',e);
+      toast('⚠️ クラウド読み込みに失敗。ローカルデータを使用');
+      try{ mats=JSON.parse(localStorage.getItem('cs3_mats')||'[]'); }catch(_){ mats=[]; }
+      try{ projs=JSON.parse(localStorage.getItem('cs3_projs')||'[]'); }catch(_){ projs=[]; }
+      try{ ents=JSON.parse(localStorage.getItem('cs3_ents')||'{}'); }catch(_){ ents={}; }
+    }
+  } else {
+    try{ mats=JSON.parse(localStorage.getItem('cs3_mats')||'[]'); }catch(_){ mats=[]; }
+    try{ projs=JSON.parse(localStorage.getItem('cs3_projs')||'[]'); }catch(_){ projs=[]; }
+    try{ ents=JSON.parse(localStorage.getItem('cs3_ents')||'{}'); }catch(_){ ents={}; }
+  }
   if(!Array.isArray(mats)) mats=[];
   if(!Array.isArray(projs)) projs=[];
   if(!ents||typeof ents!=='object') ents={};
@@ -810,6 +848,13 @@ function save(){
     localStorage.setItem('cs3_projs',JSON.stringify(projs));
     localStorage.setItem('cs3_ents',JSON.stringify(ents));
   }catch(err){ toast('保存に失敗しました（容量超過の可能性）'); console.error(err); }
+  if(window._isInternal && window._fbSetDoc){
+    window._fbSetDoc(window._fbDoc(window._fbDb,'shared_data','library'),{mats}).catch(e=>console.error('FS save:',e));
+    window._fbSetDoc(window._fbDoc(window._fbDb,'shared_data','entities'),{ents}).catch(e=>console.error('FS save:',e));
+    projs.forEach(p=>{
+      window._fbSetDoc(window._fbDoc(window._fbDb,'shared_projects',p.id),p).catch(e=>console.error('FS save:',e));
+    });
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -943,7 +988,9 @@ function delProj(){
     (s.extImgs||[]).forEach(x=>{ const id=typeof x==='string'?x:x.id; if(x&&!x.fromLib){ delete imgCache[id]; delImg(id); } });
     if(s.toshiImgId){ delete imgCache[s.toshiImgId]; delImg(s.toshiImgId); }
   });
-  projs=projs.filter(x=>x.id!==curPj);
+  const delPjId=curPj;
+  projs=projs.filter(x=>x.id!==delPjId);
+  if(window._isInternal && window._fbDeleteDoc){ window._fbDeleteDoc(window._fbDoc(window._fbDb,'shared_projects',delPjId)).catch(()=>{}); }
   curPj=null; save(); showV('home',false); renderHome();
   toast('🗑️ 案件を削除しました');
 }
