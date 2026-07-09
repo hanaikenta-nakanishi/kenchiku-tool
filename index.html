@@ -239,6 +239,8 @@ import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChang
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-auth.js';
 import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadString, getBlob, deleteObject, listAll }
+  from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-storage.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBShTX_LR3pUlIsm-38pm5CWN4NgFgcIyM",
@@ -251,6 +253,7 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 const provider = new GoogleAuthProvider();
 
 window._fbAuth = auth;
@@ -264,6 +267,12 @@ window._fbDoc = doc;
 window._fbCollection = collection;
 window._fbGetDocs = getDocs;
 window._fbDeleteDoc = deleteDoc;
+window._fbStorage = storage;
+window._fbStorageRef = storageRef;
+window._fbUploadString = uploadString;
+window._fbGetBlob = getBlob;
+window._fbDeleteObject = deleteObject;
+window._fbListAll = listAll;
 
 // 認証状態監視（モジュール内で確実に実行）
 onAuthStateChanged(auth, async (user)=>{
@@ -291,6 +300,8 @@ onAuthStateChanged(auth, async (user)=>{
     await load();
     await openDB();
     await loadImgs();
+    await migrateImgsToStorage();
+    await syncImgsFromStorage();
     showV('home',false);
     renderHome();
   };
@@ -742,7 +753,7 @@ function loadImgs(){
     }catch(err){ console.error('[loadImgs] exception', err); resolve(); }
   });
 }
-function saveImg(id,data){
+function saveImg(id,data,skipUpload){
   return new Promise(resolve=>{
     if(!db){ console.warn('[saveImg] db is null for id='+id); resolve(); return; }
     try{
@@ -754,24 +765,55 @@ function saveImg(id,data){
       } else {
         store.put(data,id);
       }
-      tx.oncomplete=resolve;
+      tx.oncomplete=()=>{ if(!skipUpload) uploadImgToStorage(id,data); resolve(); };
       tx.onerror=ev=>{ console.error('[saveImg] tx error for id='+id, ev.target.error); resolve(); };
       tx.onabort=ev=>{ console.error('[saveImg] tx aborted for id='+id, ev.target.error); resolve(); };
     }catch(err){ console.error('[saveImg] exception for id='+id, err); resolve(); }
   });
 }
+
+function uploadImgToStorage(id,data){
+  if(!window._isInternal||!window._fbStorage) return;
+  try{
+    window._fbUploadString(window._fbStorageRef(window._fbStorage,'images/'+id), data, 'data_url')
+      .catch(err=>console.warn('[uploadImg] failed id='+id, err));
+  }catch(err){ console.warn('[uploadImg] exception id='+id, err); }
+}
+
+function blobToDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const r=new FileReader();
+    r.onload=()=>resolve(r.result);
+    r.onerror=reject;
+    r.readAsDataURL(blob);
+  });
+}
+
+async function fetchImgFromStorage(id){
+  if(imgCache[id]) return true;
+  if(!window._isInternal||!window._fbStorage) return false;
+  try{
+    const blob=await window._fbGetBlob(window._fbStorageRef(window._fbStorage,'images/'+id));
+    const dataUrl=await blobToDataUrl(blob);
+    imgCache[id]=dataUrl;
+    await saveImg(id,dataUrl,true);
+    return true;
+  }catch(err){ return false; }
+}
 function getImg(id){
   return new Promise(resolve=>{
-    if(!db||imgCache[id]){resolve();return;}
+    if(imgCache[id]){resolve();return;}
+    if(!db){ fetchImgFromStorage(id).then(()=>resolve()); return; }
     try{
       const req=db.transaction('imgs','readonly').objectStore('imgs').get(id);
-      req.onsuccess=ev=>{
+      req.onsuccess=async ev=>{
         const v=ev.target.result;
-        if(v) imgCache[id]=(typeof v==='object'&&v?.dataUrl)?v.dataUrl:v;
+        if(v){ imgCache[id]=(typeof v==='object'&&v?.dataUrl)?v.dataUrl:v; }
+        else { await fetchImgFromStorage(id); }
         resolve();
       };
-      req.onerror=()=>resolve();
-    }catch(_){resolve();}
+      req.onerror=async ()=>{ await fetchImgFromStorage(id); resolve(); };
+    }catch(_){ fetchImgFromStorage(id).then(()=>resolve()); }
   });
 }
 async function ensureExtImgsLoaded(sid){
@@ -789,8 +831,44 @@ async function ensureExtImgsLoaded(sid){
   if(stillMissing.length) await loadImgs();
   renderExt(sid);
 }
+function allReferencedImgIds(){
+  const ids=new Set();
+  mats.forEach(m=>{ if(m.id) ids.add(m.id); });
+  projs.forEach(p=>(p.sheets||[]).forEach(s=>{
+    if(s.parsImgId) ids.add(s.parsImgId);
+    if(s.toshiImgId) ids.add(s.toshiImgId);
+    (s.extImgs||[]).forEach(x=>ids.add(typeof x==='string'?x:x.id));
+  }));
+  return [...ids].filter(Boolean);
+}
+
+async function syncImgsFromStorage(){
+  if(!window._isInternal||!window._fbStorage) return;
+  const missing=allReferencedImgIds().filter(id=>!imgCache[id]);
+  if(!missing.length) return;
+  await Promise.all(missing.map(fetchImgFromStorage));
+  if(curView==='home') renderHome();
+}
+
+async function migrateImgsToStorage(){
+  if(!window._isInternal||!window._fbStorage) return;
+  try{
+    const listed=await window._fbListAll(window._fbStorageRef(window._fbStorage,'images'));
+    const existing=new Set(listed.items.map(it=>it.name));
+    const locals=Object.keys(imgCache).filter(id=>imgCache[id]&&!existing.has(id));
+    if(!locals.length) return;
+    for(const id of locals){
+      await window._fbUploadString(window._fbStorageRef(window._fbStorage,'images/'+id), imgCache[id], 'data_url');
+    }
+    if(typeof toast==='function') toast('📤 画像をクラウドに移行しました（'+locals.length+'件）','ok');
+  }catch(err){ console.warn('[migrateImgs] failed', err); }
+}
+
 function delImg(id){
   return new Promise(resolve=>{
+    if(window._isInternal && window._fbStorage){
+      try{ window._fbDeleteObject(window._fbStorageRef(window._fbStorage,'images/'+id)).catch(()=>{}); }catch(_){}
+    }
     if(!db){ resolve(); return; }
     try{
       const tx=db.transaction('imgs','readwrite');
