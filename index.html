@@ -241,7 +241,7 @@ import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadString, getBlob, deleteObject, listAll }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-storage.js';
-import { getAI, getGenerativeModel, GoogleAIBackend }
+import { getAI, getGenerativeModel, VertexAIBackend }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-ai.js';
 import { initializeAppCheck, ReCaptchaV3Provider }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app-check.js';
@@ -262,7 +262,7 @@ const appCheck = initializeAppCheck(app, {
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
-const ai = getAI(app, { backend: new GoogleAIBackend() });
+const ai = getAI(app, { backend: new VertexAIBackend() });
 const aiModel = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
 window._aiModel = aiModel;
 const provider = new GoogleAuthProvider();
