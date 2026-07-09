@@ -241,6 +241,10 @@ import { getFirestore, doc, getDoc, setDoc, collection, getDocs, deleteDoc }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadString, getBlob, deleteObject, listAll }
   from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-storage.js';
+import { getAI, getGenerativeModel, GoogleAIBackend }
+  from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-ai.js';
+import { initializeAppCheck, ReCaptchaV3Provider }
+  from 'https://www.gstatic.com/firebasejs/12.15.0/firebase-app-check.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyBShTX_LR3pUlIsm-38pm5CWN4NgFgcIyM",
@@ -251,9 +255,16 @@ const firebaseConfig = {
   appId: "1:615292197082:web:991e420d25be5048cf6de3"
 };
 const app = initializeApp(firebaseConfig);
+const appCheck = initializeAppCheck(app, {
+  provider: new ReCaptchaV3Provider('6LeaTUstAAAAALnfHxYCXYubNrkIM7No7lfr5XpD'),
+  isTokenAutoRefreshEnabled: true
+});
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
+const ai = getAI(app, { backend: new GoogleAIBackend() });
+const aiModel = getGenerativeModel(ai, { model: 'gemini-2.5-flash' });
+window._aiModel = aiModel;
 const provider = new GoogleAuthProvider();
 
 window._fbAuth = auth;
@@ -1365,6 +1376,33 @@ function updMeetingRecord(sid,idx,field,val){
   const sh=getSh(sid); if(!sh||!sh.meetings||!sh.meetings[idx]) return;
   sh.meetings[idx][field]=val; save();
 }
+async function summarizeMeeting(sid, idx){
+  const sh=getSh(sid); if(!sh||!sh.meetings||!sh.meetings[idx]) return;
+  const m=sh.meetings[idx];
+  const content=(m.content||'').trim();
+  if(!content){ toast('打合せ内容が空です'); return; }
+  if(!window._aiModel){ toast('AI機能が初期化されていません'); return; }
+  const btn=document.getElementById('sumBtn_'+idx);
+  if(btn){ btn.disabled=true; btn.textContent='要約中…'; }
+  try{
+    const prompt=
+      'あなたは建築の打合せ記録を整理するアシスタントです。'+
+      '以下の打合せ内容を、次の3見出しで日本語で簡潔にまとめてください。'+
+      '各項目は箇条書き。該当が無い見出しは「特になし」と書く。\n'+
+      '【要点】\n【決定事項】\n【次回までのTODO】\n\n'+
+      '--- 打合せ内容 ---\n'+content;
+    const res=await window._aiModel.generateContent(prompt);
+    const text=res.response.text();
+    m.summary=text;
+    save();
+    renderHearing(sid);
+    toast('✅ 要約を生成しました','ok');
+  }catch(err){
+    console.error('[summarizeMeeting]', err);
+    toast('要約に失敗しました: '+(err&&err.message||err));
+    if(btn){ btn.disabled=false; btn.textContent='🤖 AI要約'; }
+  }
+}
 function renderHearing(sid){
   const sh=getSh(sid); if(!sh) return;
   const agCard=document.getElementById('agCard');
@@ -1516,6 +1554,7 @@ function renderHearing(sid){
               <div class="fg" style="min-width:160px;flex:1"><label class="fl">出席者</label>
                 <input class="inp" value="${e(m.attendees||'')}" oninput="updMeetingRecord('${sid}',${i},'attendees',this.value)"></div>
               <button class="btn bo bsm" id="recBtn_${i}" onclick="toggleRecording('${sid}',${i})">🎙️ 音声入力</button>
+              <button class="btn bo bsm" id="sumBtn_${i}" onclick="summarizeMeeting('${sid}',${i})">🤖 AI要約</button>
               <button class="btn bp bsm" onclick="printMeetingRecord('${sid}',${i})">🖨️ 印刷</button>
               <button class="bd bsm" onclick="delMeetingRecord('${sid}',${i})">削除</button>
             </div>
@@ -1526,6 +1565,13 @@ function renderHearing(sid){
                 oninput="updMeetingRecord('${sid}',${i},'content',this.value)"
                 style="width:100%;resize:vertical;line-height:1.7">${e(m.content||'')}</textarea>
               <div class="interim-text" id="mInterim_${i}"></div>
+            </div>
+            <div class="fg" style="margin-top:8px">
+              <label class="fl">AI要約（要点・決定事項・次回TODO）</label>
+              <textarea class="inp" rows="6"
+                placeholder="「🤖 AI要約」で自動生成（生成後も手直し可）"
+                oninput="updMeetingRecord('${sid}',${i},'summary',this.value)"
+                style="width:100%;resize:vertical;line-height:1.7;background:#f7fbf8">${e(m.summary||'')}</textarea>
             </div>
           </div>`).join('')
         :`<p style="font-size:12px;color:var(--muted)">「＋ 打合せ記録を追加」で記録を追加できます。複数回分の記録を管理できます。</p>`}
@@ -2933,6 +2979,7 @@ function buildMeetingPage(pj,sh,m,idx){
   </div>
   <div class="pt-wrap" style="flex:1;overflow:hidden">
     <div style="font-size:8.5pt;line-height:2;white-space:pre-wrap;height:100%;overflow:hidden">${e(m.content||'')}</div>
+    ${m.summary&&m.summary.trim()?`<div style="margin-top:5mm;font-size:9pt;font-weight:700;color:#1a3a5c;border-bottom:1px solid #1a3a5c;padding-bottom:1mm;margin-bottom:2mm">AI要約</div><div style="font-size:8.5pt;line-height:2">${n2b(e(m.summary))}</div>`:''}
   </div>
   ${ppFoot(foot,pj)}
 </div>`;
